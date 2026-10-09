@@ -1,0 +1,1232 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><title>Radar de Transformación</title></head><body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============ DESIGN PLAN ============
+   Layout: fixed left control-rail (nav + diagnósticos guardados) + scrollable
+   main panel split into addressable sections, like a security/ops console.
+   Color: dark graphite base, single amber signal color, plus three semantic
+   hues (antes=rojo, después=verde, ia=violeta) that are never the accent.
+   Type: Archivo (display, headers/numbers), IBM Plex Sans (body/UI),
+   IBM Plex Mono (data, tags, process steps, badges). */
+:root{
+  --bg:#f4f2ee; --surface:#ffffff; --surface-2:#ebe8e2; --border:#d8d4cb;
+  --text:#191a1c; --text-muted:#5c5f66; --accent:#c75a12; --accent-ink:#fff6ee;
+  --antes:#b42a2f; --antes-soft:#f6e3e2; --despues:#17794a; --despues-soft:#e0efe6;
+  --ai:#5436c4; --ai-soft:#eae6fb; --warn:#9a6a00; --warn-soft:#f6ecd4;
+  --danger:#b42a2f; --shadow: 0 1px 2px rgba(20,16,10,.06), 0 8px 24px -12px rgba(20,16,10,.18);
+  --font-display:'Archivo',system-ui,sans-serif; --font-body:'IBM Plex Sans',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c0e12; --surface:#13161b; --surface-2:#1a1e25; --border:#2a2f38;
+    --text:#edeef0; --text-muted:#9aa0ab; --accent:#ff9748; --accent-ink:#241200;
+    --antes:#ff6b67; --antes-soft:#2c1517; --despues:#4fd892; --despues-soft:#102219;
+    --ai:#b3a1ff; --ai-soft:#1d1733; --warn:#f0bb52; --warn-soft:#2a2111;
+    --danger:#ff6b67; --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -14px rgba(0,0,0,.7);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c0e12; --surface:#13161b; --surface-2:#1a1e25; --border:#2a2f38;
+  --text:#edeef0; --text-muted:#9aa0ab; --accent:#ff9748; --accent-ink:#241200;
+  --antes:#ff6b67; --antes-soft:#2c1517; --despues:#4fd892; --despues-soft:#102219;
+  --ai:#b3a1ff; --ai-soft:#1d1733; --warn:#f0bb52; --warn-soft:#2a2111;
+  --danger:#ff6b67; --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -14px rgba(0,0,0,.7);
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;line-height:1.55}
+h1,h2,h3,h4{font-family:var(--font-display);text-wrap:balance;margin:0}
+p{margin:0}
+.mono{font-family:var(--font-mono)}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent)}
+button{font-family:inherit}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}
+
+/* ---- App shell ---- */
+#app{display:flex;min-height:100%;max-width:1680px;margin:0 auto}
+.rail{
+  width:280px;flex:0 0 280px;border-right:1px solid var(--border);
+  padding:20px 16px calc(20px + env(safe-area-inset-bottom,0px)) 16px;
+  display:flex;flex-direction:column;gap:18px;position:sticky;top:0;
+  height:100vh;overflow-y:auto;background:var(--surface)
+}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-mark{width:34px;height:34px;border-radius:9px;background:var(--accent);color:var(--accent-ink);
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:800;font-size:16px;flex:0 0 auto}
+.brand-text h1{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.brand-text span{font-size:11px;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:.02em}
+
+.company-chip{border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--surface-2)}
+.company-chip .name{font-family:var(--font-display);font-weight:700;font-size:14px;margin-bottom:3px}
+.company-chip .meta{font-size:11px;color:var(--text-muted);font-family:var(--font-mono)}
+.company-chip .empty{font-size:12px;color:var(--text-muted)}
+
+nav.secs{display:flex;flex-direction:column;gap:2px}
+nav.secs button{
+  display:flex;align-items:center;gap:10px;text-align:left;background:transparent;border:none;
+  border-radius:9px;padding:9px 10px;color:var(--text-muted);cursor:pointer;font-size:13px;font-weight:500
+}
+nav.secs button .num{font-family:var(--font-mono);font-size:10px;width:18px;flex:0 0 auto;color:var(--text-muted)}
+nav.secs button:hover{background:var(--surface-2);color:var(--text)}
+nav.secs button.active{background:var(--accent);color:var(--accent-ink)}
+nav.secs button.active .num{color:var(--accent-ink);opacity:.7}
+nav.secs button[disabled]{opacity:.35;cursor:not-allowed}
+nav.secs button[disabled]:hover{background:transparent;color:var(--text-muted)}
+
+.rail-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+.btn{
+  border:1px solid var(--border);background:var(--surface-2);color:var(--text);border-radius:9px;
+  padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;
+  justify-content:center;gap:7px
+}
+.btn:hover{border-color:var(--accent)}
+.btn-primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn-primary:hover{filter:brightness(1.06)}
+.btn-block{width:100%}
+.btn-sm{padding:6px 10px;font-size:12px;border-radius:7px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+.saved-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto}
+.saved-item{
+  border:1px solid var(--border);border-radius:9px;padding:8px 10px;cursor:pointer;background:var(--surface);
+  display:flex;flex-direction:column;gap:2px
+}
+.saved-item:hover{border-color:var(--accent)}
+.saved-item.active{border-color:var(--accent);background:var(--surface-2)}
+.saved-item .t{font-size:12px;font-weight:600}
+.saved-item .s{font-size:10px;color:var(--text-muted);font-family:var(--font-mono)}
+.saved-head{display:flex;align-items:center;justify-content:space-between}
+.saved-head span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
+
+/* ---- Main ---- */
+main{flex:1 1 auto;min-width:0;padding:28px clamp(16px,4vw,56px) 80px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:28px}
+.topbar .eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.topbar h2{font-size:26px;margin-top:2px}
+.topbar-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.section{display:none;flex-direction:column;gap:20px}
+.section.active{display:flex}
+
+.card{border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:20px;box-shadow:var(--shadow)}
+.card h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h3 .tag{font-family:var(--font-mono);font-size:10px;padding:2px 7px;border-radius:5px;background:var(--surface-2);color:var(--text-muted);font-weight:600}
+.lede{color:var(--text-muted);font-size:13px;max-width:72ch}
+
+/* intake form */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;font-weight:600;color:var(--text-muted)}
+.field input,.field textarea,.field select{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:9px;color:var(--text);
+  padding:10px 12px;font-family:var(--font-body);font-size:13.5px;resize:vertical
+}
+.field input:focus,.field textarea:focus,.field select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:640px){.grid-2{grid-template-columns:1fr}}
+
+/* stat tiles */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{border:1px solid var(--border);border-radius:12px;padding:14px 16px;background:var(--surface)}
+.stat .n{font-family:var(--font-display);font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.stat .l{font-size:11px;color:var(--text-muted);margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.stat.a .n{color:var(--antes)}
+.stat.d .n{color:var(--despues)}
+.stat.i .n{color:var(--ai)}
+
+/* problem cards */
+.problem{border:1px solid var(--border);border-left:3px solid var(--antes);border-radius:10px;padding:14px 16px;background:var(--surface)}
+.problem h4{font-size:14px;margin-bottom:6px}
+.problem dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:10px;font-size:12.5px}
+.problem dt{color:var(--text-muted);font-weight:600;white-space:nowrap}
+.problem dd{margin:0;color:var(--text)}
+
+/* flow diagram */
+.flow-wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:760px){.flow-wrap{grid-template-columns:1fr}}
+.flow-col h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.flow-col.antes h4{color:var(--antes)}
+.flow-col.despues h4{color:var(--despues)}
+.flow{display:flex;flex-direction:column;align-items:stretch}
+.flow-step{border:1px solid var(--border);border-radius:9px;padding:9px 12px;font-size:12.5px;background:var(--surface-2);position:relative}
+.flow-step.problem-step{border-color:var(--antes);background:var(--antes-soft)}
+.flow-step.auto-step{border-color:var(--despues);background:var(--despues-soft)}
+.flow-step .step-tag{font-family:var(--font-mono);font-size:9px;color:var(--text-muted);display:block;margin-bottom:2px;letter-spacing:.03em}
+.flow-arrow{align-self:center;color:var(--text-muted);font-size:13px;line-height:1;padding:3px 0}
+.proceso-meta{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+.badge{font-family:var(--font-mono);font-size:10px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);color:var(--text-muted)}
+.que-cambio{margin-top:12px;border-top:1px dashed var(--border);padding-top:10px;font-size:12.5px;color:var(--text-muted)}
+.que-cambio b{color:var(--text)}
+
+/* tables */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:12.5px}
+thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);
+  background:var(--surface-2);padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+.prio{font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
+.prio-alta{background:var(--antes-soft);color:var(--antes)}
+.prio-media{background:var(--warn-soft);color:var(--warn)}
+.prio-baja{background:var(--despues-soft);color:var(--despues)}
+
+/* agent cards */
+.agents{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.agent{border:1px solid var(--border);border-left:3px solid var(--ai);border-radius:10px;padding:14px 16px;background:var(--surface);display:flex;flex-direction:column;gap:8px}
+.agent h4{font-size:14px;display:flex;align-items:center;gap:7px}
+.agent h4 .dot{width:7px;height:7px;border-radius:50%;background:var(--ai);flex:0 0 auto}
+.agent .objetivo{font-size:12.5px;color:var(--text-muted)}
+.agent .kv{font-size:11.5px}
+.agent .kv b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:3px;font-weight:700}
+.agent ul{margin:0;padding-left:16px}
+.agent .approval{margin-top:4px;font-size:11.5px;background:var(--warn-soft);color:var(--warn);border-radius:7px;padding:7px 9px}
+
+/* roadmap */
+.roadmap{display:flex;flex-direction:column;gap:0}
+.phase{display:grid;grid-template-columns:40px 1fr;gap:14px;position:relative}
+.phase .dotcol{display:flex;flex-direction:column;align-items:center}
+.phase .circle{width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:12px;flex:0 0 auto}
+.phase .line{flex:1;width:2px;background:var(--border);margin:4px 0}
+.phase:last-child .line{display:none}
+.phase-body{padding-bottom:24px}
+.phase-body h4{font-size:14.5px;margin-bottom:8px}
+.phase-body ul{margin:0;padding-left:18px;font-size:12.5px;color:var(--text)}
+.phase-body li{margin-bottom:3px}
+
+/* risk/kpi */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.kpi{border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.kpi h5{font-size:13px;margin-bottom:4px}
+.kpi p{font-size:12px;color:var(--text-muted)}
+.risk-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+@media(max-width:640px){.risk-row{grid-template-columns:1fr}}
+.risk-row .r{border-left:2px solid var(--antes);padding-left:10px;font-size:12.5px}
+.risk-row .m{border-left:2px solid var(--despues);padding-left:10px;font-size:12.5px}
+.risk-row small{display:block;color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
+
+/* chat */
+.chat-box{display:flex;flex-direction:column;height:560px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface)}
+.chat-log{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
+.msg{max-width:82%;border-radius:12px;padding:10px 13px;font-size:13px;white-space:pre-wrap}
+.msg.user{align-self:flex-end;background:var(--accent);color:var(--accent-ink)}
+.msg.assistant{align-self:flex-start;background:var(--surface-2);border:1px solid var(--border)}
+.msg.thinking{align-self:flex-start;color:var(--text-muted);font-style:italic}
+.chip-row{display:flex;gap:7px;flex-wrap:wrap;padding:0 18px 12px}
+.chip{font-size:11.5px;border:1px solid var(--border);border-radius:999px;padding:5px 11px;cursor:pointer;background:var(--surface-2);color:var(--text)}
+.chip:hover{border-color:var(--accent)}
+.chat-input{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border)}
+.chat-input textarea{flex:1;min-height:42px;max-height:120px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text);padding:10px 12px;font-family:var(--font-body);font-size:13px;resize:vertical}
+
+.empty-state{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:40px 10px;color:var(--text-muted)}
+.empty-state h3{color:var(--text);font-size:16px}
+.callout{border:1px solid var(--border);border-left:3px solid var(--warn);background:var(--warn-soft);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--text)}
+.callout b{color:var(--warn)}
+.loader{display:inline-flex;gap:4px}
+.loader span{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:bl 1s infinite ease-in-out}
+.loader span:nth-child(2){animation-delay:.15s}.loader span:nth-child(3){animation-delay:.3s}
+@keyframes bl{0%,80%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.loader span{animation:none}}
+.spacer{flex:1}
+.list-tight{margin:0;padding-left:18px;font-size:12.5px}
+.list-tight li{margin-bottom:4px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.two-col{grid-template-columns:1fr}}
+hr.soft{border:none;border-top:1px solid var(--border);margin:4px 0}
+
+/* mobile rail */
+@media(max-width:860px){
+  #app{flex-direction:column}
+  .rail{position:sticky;top:0;width:100%;flex:none;height:auto;max-height:none;border-right:none;border-bottom:1px solid var(--border);
+    flex-direction:row;flex-wrap:wrap;align-items:center;padding:12px 14px;gap:10px;z-index:5}
+  .brand-text span{display:none}
+  nav.secs{display:none}
+  .company-chip{display:none}
+  .saved-list{display:none}
+  .rail-foot{margin-top:0;flex-direction:row;width:auto}
+  main{padding:18px 16px 70px}
+  .mobile-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:18px}
+  .mobile-tabs button{flex:0 0 auto;font-size:12px;padding:7px 11px;border-radius:999px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text-muted);white-space:nowrap}
+  .mobile-tabs button.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+}
+@media(min-width:861px){.mobile-tabs{display:none}}
+</style>
+
+<div id="app">
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">RT</div>
+      <div class="brand-text">
+        <h1>Radar de Transformación</h1>
+        <span>CONSULTORÍA · PROCESOS · IA</span>
+      </div>
+    </div>
+
+    <div class="company-chip" id="companyChip">
+      <p class="empty">Ningún diagnóstico cargado todavía.</p>
+    </div>
+
+    <nav class="secs" id="navSecs"></nav>
+
+    <div class="rail-foot">
+      <div>
+        <div class="saved-head"><span>Diagnósticos guardados</span></div>
+        <div class="saved-list" id="savedList" style="margin-top:8px"></div>
+      </div>
+      <button class="btn btn-block" id="btnNew">+ Nuevo diagnóstico</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="mobile-tabs" id="mobileTabs"></div>
+    <div class="topbar">
+      <div>
+        <div class="eyebrow" id="topEyebrow">Panel de diagnóstico</div>
+        <h2 id="topTitle">Configura tu primer diagnóstico</h2>
+      </div>
+      <div class="topbar-actions" id="topActions"></div>
+    </div>
+
+    <!-- 0: INTAKE -->
+    <section class="section" data-sec="intake">
+      <div class="card">
+        <h3>Datos de la empresa <span class="tag">Entrada</span></h3>
+        <p class="lede">Pega la información disponible: procesos, entrevistas, descripción del negocio, problemas conocidos. Cuanta más información real entregues, más preciso será el diagnóstico. Si falta información crítica, el sistema la señalará en vez de inventarla.</p>
+        <div style="height:14px"></div>
+        <div class="grid-2">
+          <div class="field"><label for="inCompany">Empresa</label><input id="inCompany" type="text" placeholder="Nombre de la empresa"></div>
+          <div class="field"><label for="inSector">Sector</label><input id="inSector" type="text" placeholder="Ej. Logística y distribución"></div>
+        </div>
+        <div style="height:12px"></div>
+        <div class="grid-2">
+          <div class="field"><label for="inCountry">País / mercado</label><input id="inCountry" type="text" placeholder="Ej. Colombia"></div>
+          <div class="field"><label for="inSize">Tamaño aproximado (opcional)</label><input id="inSize" type="text" placeholder="Ej. 45 empleados, 3 sedes"></div>
+        </div>
+        <div style="height:12px"></div>
+        <div class="field">
+          <label for="inInfo">Información disponible de la empresa</label>
+          <textarea id="inInfo" rows="9" placeholder="Describe procesos, herramientas usadas, equipos, quejas de clientes, cómo se atienden las ventas, qué datos manejan, etc."></textarea>
+        </div>
+        <div style="height:16px"></div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btnGenerate">Generar diagnóstico</button>
+          <span id="genStatus" style="font-size:12.5px;color:var(--text-muted)"></span>
+        </div>
+      </div>
+      <div class="card" id="missingCard" hidden>
+        <h3>Información faltante <span class="tag">Antes de asumir</span></h3>
+        <ul class="list-tight" id="missingList"></ul>
+      </div>
+    </section>
+
+    <!-- 1: RESUMEN -->
+    <section class="section" data-sec="resumen">
+      <div class="stats" id="statTiles"></div>
+      <div class="card"><h3>Resumen ejecutivo</h3><p id="resumenTxt" style="font-size:13.5px"></p></div>
+      <div class="card"><h3>Situación actual</h3><p id="situacionTxt" style="font-size:13.5px"></p></div>
+      <div class="card" id="faltaCard" hidden><h3>Información a validar</h3><ul class="list-tight" id="faltaList2"></ul></div>
+    </section>
+
+    <!-- 2: ANTES -->
+    <section class="section" data-sec="antes">
+      <div class="card">
+        <h3>Problemas identificados <span class="tag">ANTES</span></h3>
+        <p class="lede">Cada problema incluye por qué ocurre, su impacto y la evidencia que lo respalda.</p>
+        <div style="height:12px"></div>
+        <div id="problemsList" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+      <div id="procesosAntesList" style="display:flex;flex-direction:column;gap:18px"></div>
+    </section>
+
+    <!-- 3: DATOS -->
+    <section class="section" data-sec="datos">
+      <div class="card">
+        <h3>Análisis de datos</h3>
+        <div class="two-col" style="margin-top:4px">
+          <div><h4 style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Datos utilizados</h4><ul class="list-tight" id="datUtilizados"></ul></div>
+          <div><h4 style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Dónde se encuentran</h4><ul class="list-tight" id="datUbicaciones"></ul></div>
+        </div>
+        <hr class="soft" style="margin:16px 0">
+        <div class="two-col">
+          <div><h4 style="font-size:12px;color:var(--antes);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Duplicados</h4><ul class="list-tight" id="datDuplicados"></ul></div>
+          <div><h4 style="font-size:12px;color:var(--antes);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Incompletos</h4><ul class="list-tight" id="datIncompletos"></ul></div>
+        </div>
+        <hr class="soft" style="margin:16px 0">
+        <h4 style="font-size:12px;color:var(--antes);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Sistemas desconectados</h4>
+        <ul class="list-tight" id="datDesconectados"></ul>
+      </div>
+      <div class="card"><h3>Indicadores recomendados a medir</h3><ul class="list-tight" id="datIndicadores"></ul></div>
+      <div class="two-col">
+        <div class="card"><h3>Hechos comprobados</h3><ul class="list-tight" id="datHechos"></ul></div>
+        <div class="card"><h3>Hipótesis / supuestos</h3><ul class="list-tight" id="datSupuestos"></ul></div>
+      </div>
+    </section>
+
+    <!-- 4: AUTOMATIZACION -->
+    <section class="section" data-sec="automatizacion">
+      <div class="card">
+        <h3>Oportunidades de automatización</h3>
+        <p class="lede">Priorizadas por impacto económico, ahorro de tiempo, frecuencia, facilidad de implementación, riesgo, impacto en clientes y potencial de IA.</p>
+        <div style="height:12px"></div>
+        <div class="tbl-wrap"><table id="autoTable"><thead><tr><th>Proceso</th><th>Problema</th><th>Tarea repetitiva</th><th>Automatización posible</th><th>Beneficio</th><th>Prioridad</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- 5: AGENTES -->
+    <section class="section" data-sec="agentes">
+      <div class="card">
+        <h3>Agentes de inteligencia artificial recomendados</h3>
+        <p class="lede">Ningún agente toma decisiones críticas ni inventa información sin autorización humana.</p>
+      </div>
+      <div class="agents" id="agentsGrid"></div>
+    </section>
+
+    <!-- 6: DESPUES -->
+    <section class="section" data-sec="despues">
+      <div class="card">
+        <h3>Comparación ANTES vs. DESPUÉS <span class="tag">por aspecto</span></h3>
+        <div class="tbl-wrap"><table id="compTable"><thead><tr><th>Aspecto</th><th>Antes</th><th>Después</th></tr></thead><tbody></tbody></table></div>
+      </div>
+      <div id="procesosDespuesList" style="display:flex;flex-direction:column;gap:18px"></div>
+    </section>
+
+    <!-- 7: ROADMAP -->
+    <section class="section" data-sec="roadmap">
+      <div class="card">
+        <h3>Hoja de ruta de implementación</h3>
+        <div class="roadmap" id="roadmapList" style="margin-top:10px"></div>
+      </div>
+    </section>
+
+    <!-- 8: INDICADORES -->
+    <section class="section" data-sec="indicadores">
+      <div class="card"><h3>Indicadores para medir resultados</h3><div class="kpi-grid" id="kpiGrid" style="margin-top:4px"></div></div>
+      <div class="card"><h3>Riesgos y controles</h3><div style="display:flex;flex-direction:column;gap:10px;margin-top:4px" id="riskList"></div></div>
+      <div class="card"><h3>Recomendaciones finales</h3><ul class="list-tight" id="recoList" style="font-size:13.5px"></ul></div>
+    </section>
+
+    <!-- 9: PREGUNTAS -->
+    <section class="section" data-sec="preguntas">
+      <div class="card">
+        <h3>Pregúntale al diagnóstico</h3>
+        <p class="lede">Las respuestas se basan únicamente en la información del diagnóstico generado. Si algo no se puede responder con esos datos, el sistema lo indicará.</p>
+      </div>
+      <div class="chip-row" id="suggestedChips"></div>
+      <div class="chat-box">
+        <div class="chat-log" id="chatLog"></div>
+        <div class="chat-input">
+          <textarea id="chatInput" placeholder="Ej. ¿Dónde estamos perdiendo más oportunidades?"></textarea>
+          <button class="btn btn-primary" id="btnSend">Enviar</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------- constants ---------------- */
+var SECTIONS = [
+  {id:"intake", label:"Datos de entrada", num:"00", always:true},
+  {id:"resumen", label:"Resumen ejecutivo", num:"01"},
+  {id:"antes", label:"Diagnóstico ANTES", num:"02"},
+  {id:"datos", label:"Análisis de datos", num:"03"},
+  {id:"automatizacion", label:"Automatización", num:"04"},
+  {id:"agentes", label:"Agentes de IA", num:"05"},
+  {id:"despues", label:"DESPUÉS y comparación", num:"06"},
+  {id:"roadmap", label:"Hoja de ruta", num:"07"},
+  {id:"indicadores", label:"Indicadores y riesgos", num:"08"},
+  {id:"preguntas", label:"Preguntas con IA", num:"09"}
+];
+var COMPARISON_ASPECTS = ["Procesos","Datos","Ventas","Atención","Operaciones","Automatización","IA","Seguimiento","Toma de decisiones","Productividad"];
+var FASES = [
+  {fase:"Fase 1", nombre:"Diagnóstico"},
+  {fase:"Fase 2", nombre:"Organización"},
+  {fase:"Fase 3", nombre:"Automatización"},
+  {fase:"Fase 4", nombre:"Inteligencia artificial"},
+  {fase:"Fase 5", nombre:"Optimización"}
+];
+var SUGGESTED_QS = [
+  "¿Dónde estamos perdiendo más oportunidades?",
+  "¿Cuál es nuestro proceso más ineficiente?",
+  "¿Qué deberíamos automatizar primero?",
+  "¿Qué información está duplicada?",
+  "¿Dónde necesitamos intervención humana?",
+  "¿Qué riesgos existen en la transformación?"
+];
+
+/* ---------------- state ---------------- */
+var caps = {db:null, sample:null, user:null, downloads:null};
+var state = {
+  section:"intake",
+  currentId:null,
+  currentDoc:null,     // {company,sector,country,size,info,data,createdAt}
+  savedList:[],
+  chatMsgs:[],          // {role, content, ts} for rendering
+  chatTurns:[],          // {role, content} for sample() context
+  generating:false,
+  chatBusy:false
+};
+
+/* ---------------- helpers ---------------- */
+function $(sel){ return document.querySelector(sel); }
+function el(tag, cls, html){
+  var e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(html !== undefined) e.innerHTML = html;
+  return e;
+}
+function esc(s){
+  return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+function arr(v){ return Array.isArray(v) ? v : (v ? [v] : []); }
+function fmtDate(iso){
+  try{
+    var d = new Date(iso);
+    return d.toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"numeric"});
+  }catch(e){ return ""; }
+}
+function prioClass(p){
+  var v = String(p||"").toLowerCase();
+  if(v.indexOf("alta")>=0) return "prio-alta";
+  if(v.indexOf("media")>=0) return "prio-media";
+  return "prio-baja";
+}
+
+/* ---------------- nav rendering ---------------- */
+function renderNav(){
+  var hasData = !!(state.currentDoc && state.currentDoc.data);
+  var nav = $("#navSecs");
+  nav.innerHTML = "";
+  var mobile = $("#mobileTabs");
+  mobile.innerHTML = "";
+  SECTIONS.forEach(function(s){
+    var disabled = !s.always && !hasData;
+    var b = el("button", (state.section===s.id?"active":"") + (disabled?"":""));
+    if(disabled) b.disabled = true;
+    b.innerHTML = '<span class="num">'+s.num+'</span><span>'+esc(s.label)+'</span>';
+    b.addEventListener("click", function(){ if(!disabled) setSection(s.id); });
+    nav.appendChild(b);
+
+    var mb = el("button", state.section===s.id?"active":"", esc(s.label));
+    if(disabled) mb.disabled = true;
+    mb.addEventListener("click", function(){ if(!disabled) setSection(s.id); });
+    mobile.appendChild(mb);
+  });
+}
+function setSection(id){
+  state.section = id;
+  document.querySelectorAll(".section").forEach(function(sec){
+    sec.classList.toggle("active", sec.getAttribute("data-sec")===id);
+  });
+  renderNav();
+  renderTopbar();
+  window.scrollTo({top:0, behavior:"instant" in window ? "instant" : "auto"});
+}
+
+function renderTopbar(){
+  var meta = SECTIONS.filter(function(s){return s.id===state.section;})[0];
+  $("#topEyebrow").textContent = state.currentDoc ? (state.currentDoc.company + " · " + state.currentDoc.sector) : "Panel de diagnóstico";
+  $("#topTitle").textContent = meta ? meta.label : "";
+  var actions = $("#topActions");
+  actions.innerHTML = "";
+  if(state.currentDoc && state.currentDoc.data && state.section !== "intake"){
+    var dl = el("button","btn btn-sm","Descargar informe");
+    dl.addEventListener("click", exportReport);
+    actions.appendChild(dl);
+    var del = el("button","btn btn-sm","Eliminar");
+    del.addEventListener("click", function(){ deleteCurrent(); });
+    actions.appendChild(del);
+  }
+}
+
+/* ---------------- company chip + saved list ---------------- */
+function renderCompanyChip(){
+  var box = $("#companyChip");
+  if(!state.currentDoc){
+    box.innerHTML = '<p class="empty">Ningún diagnóstico cargado todavía.</p>';
+    return;
+  }
+  var d = state.currentDoc;
+  box.innerHTML = '<div class="name">'+esc(d.company)+'</div><div class="meta">'+esc(d.sector)+' · '+esc(d.country)+'</div>';
+}
+
+function renderSavedList(){
+  var box = $("#savedList");
+  box.innerHTML = "";
+  if(!state.savedList.length){
+    box.appendChild(el("div","saved-item","<div class='s'>Aún no hay diagnósticos guardados.</div>"));
+    return;
+  }
+  state.savedList.forEach(function(d){
+    var item = el("div","saved-item"+(d.id===state.currentId?" active":""));
+    item.innerHTML = '<div class="t">'+esc(d.company)+'</div><div class="s">'+esc(d.sector)+' · '+fmtDate(d.createdAt)+'</div>';
+    item.addEventListener("click", function(){ loadDiagnostic(d.id); });
+    box.appendChild(item);
+  });
+}
+
+/* ---------------- db / init ---------------- */
+async function initCapabilities(){
+  try{ caps.db = await window.claude.use("db"); }catch(e){ caps.db = null; }
+  try{ caps.sample = await window.claude.use("sample"); }catch(e){ caps.sample = null; }
+  try{ caps.user = await window.claude.use("user"); }catch(e){ caps.user = null; }
+  try{ caps.downloads = await window.claude.use("downloads"); }catch(e){ caps.downloads = null; }
+
+  if(!caps.sample){
+    $("#genStatus").textContent = "Este visor no permite llamadas a Claude, así que el diagnóstico no puede generarse aquí.";
+    $("#btnGenerate").disabled = true;
+  }
+  loadSavedList();
+}
+
+function loadSavedList(){
+  if(!caps.db) return;
+  try{
+    var q = caps.db.collection("diagnostics").orderBy("createdAt","desc").limit(30);
+    q.onSnapshot(function(snap){
+      state.savedList = snap.docs.map(function(doc){
+        var data = doc.data() || {};
+        return {id: doc.id, company: data.company||"Sin nombre", sector: data.sector||"", createdAt: data.createdAt||""};
+      });
+      renderSavedList();
+    }, function(e){ /* unavailable: keep silent list */ });
+  }catch(e){}
+}
+
+async function loadDiagnostic(id){
+  if(!caps.db) return;
+  try{
+    var snap = await caps.db.doc("diagnostics/"+id).get();
+    if(!snap.exists) return;
+    var data = snap.data();
+    state.currentId = id;
+    state.currentDoc = data;
+    state.chatMsgs = [];
+    state.chatTurns = [];
+    renderCompanyChip();
+    renderSavedList();
+    renderAll();
+    setSection("resumen");
+    loadChatHistory(id);
+  }catch(e){}
+}
+
+async function loadChatHistory(id){
+  if(!caps.db) return;
+  try{
+    var q = caps.db.collection("diagnostics/"+id+"/chat").orderBy("ts","asc").limit(100);
+    var snap = await q.get();
+    state.chatMsgs = snap.docs.map(function(doc){ return doc.data(); });
+    state.chatTurns = state.chatMsgs.map(function(m){ return {role:m.role, content:m.content}; });
+    renderChatLog();
+  }catch(e){}
+}
+
+function newDiagnostic(){
+  state.currentId = null;
+  state.currentDoc = null;
+  state.chatMsgs = [];
+  state.chatTurns = [];
+  renderCompanyChip();
+  renderSavedList();
+  renderNav();
+  setSection("intake");
+  $("#missingCard").hidden = true;
+}
+
+async function deleteCurrent(){
+  if(!state.currentId || !caps.db) return;
+  if(!window.__confirmDelete){
+    $("#genStatus").textContent = "";
+    var ok = await inlineConfirm("¿Eliminar este diagnóstico? Esta acción no se puede deshacer.");
+    if(!ok) return;
+  }
+  try{
+    await caps.db.doc("diagnostics/"+state.currentId).delete();
+  }catch(e){}
+  newDiagnostic();
+}
+
+function inlineConfirm(msg){
+  return new Promise(function(resolve){
+    var yes = window.confirm ? false : false;
+    // Browser confirm() is inert in this viewer; build a lightweight inline confirm.
+    var overlay = el("div","", "");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px";
+    var box = el("div","card");
+    box.style.cssText = "max-width:360px;box-shadow:var(--shadow)";
+    box.innerHTML = '<h3 style="margin-bottom:10px">Confirmar</h3><p style="font-size:13px;margin-bottom:16px">'+esc(msg)+'</p>';
+    var row = el("div","");
+    row.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+    var cancel = el("button","btn btn-sm","Cancelar");
+    var confirmBtn = el("button","btn btn-sm btn-primary","Eliminar");
+    row.appendChild(cancel); row.appendChild(confirmBtn);
+    box.appendChild(row);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    cancel.addEventListener("click", function(){ document.body.removeChild(overlay); resolve(false); });
+    confirmBtn.addEventListener("click", function(){ document.body.removeChild(overlay); resolve(true); });
+  });
+}
+
+/* ---------------- prompt building ---------------- */
+var SCHEMA_EXAMPLE = '{"resumenEjecutivo":"","situacionActual":"","datosFaltantes":[""],"problemas":[{"titulo":"","descripcion":"","porQueOcurre":"","impacto":"","evidencia":""}],"procesosAntes":[{"nombre":"","entrada":"","pasos":[""],"personas":[""],"sistemas":[""],"salida":"","problemas":[""],"puntosRepeticion":[""],"puntosAutomatizables":[""]}],"analisisDatos":{"datosUtilizados":[""],"ubicaciones":[""],"duplicados":[""],"incompletos":[""],"desconectados":[""],"indicadoresRecomendados":[""],"hechos":[""],"supuestos":[""]},"oportunidadesAutomatizacion":[{"proceso":"","problema":"","tareaRepetitiva":"","automatizacionPosible":"","beneficio":"","prioridad":"Alta|Media|Baja"}],"agentesIA":[{"nombre":"","objetivo":"","usuario":"","informacionNecesaria":[""],"preguntasQueResponde":[""],"tareas":[""],"sistemasConectar":[""],"aprobacionHumana":"","beneficioEsperado":""}],"procesosDespues":[{"nombre":"(igual al nombre en procesosAntes, mismo orden)","pasos":[""],"queCambio":""}],"comparacion":[{"aspecto":"Procesos","antes":"","despues":""}],"hojaDeRuta":[{"fase":"Fase 1","nombre":"Diagnóstico","actividades":[""]}],"indicadores":[{"nombre":"","descripcion":"","comoMedir":""}],"riesgos":[{"riesgo":"","mitigacion":""}],"preguntasFrecuentes":[""],"recomendacionesFinales":[""]}';
+
+function buildPrompt(company, sector, country, size, info){
+  return [
+"Actúa como un consultor senior de transformación empresarial, procesos, automatización, datos e inteligencia artificial, con el nivel de rigor de firmas como Deloitte o Accenture.",
+"",
+"Vas a diagnosticar la siguiente empresa y devolver EXCLUSIVAMENTE un objeto JSON (sin texto antes ni después, sin markdown) que siga exactamente este esquema de claves (los valores de ejemplo están vacíos, complétalos con contenido real; usa arrays vacíos si no aplica):",
+SCHEMA_EXAMPLE,
+"",
+"EMPRESA A ANALIZAR",
+"Nombre: " + (company||"(no especificado)"),
+"Sector: " + (sector||"(no especificado)"),
+"País/mercado: " + (country||"(no especificado)"),
+"Tamaño: " + (size||"(no especificado)"),
+"Información disponible:",
+(info || "(el usuario no proporcionó información adicional; basa el diagnóstico en patrones típicos del sector indicado y marca explícitamente cada supuesto en 'analisisDatos.supuestos' y cada vacío crítico en 'datosFaltantes')"),
+"",
+"REGLAS OBLIGATORIAS",
+"- No inventes datos específicos de la empresa que no estén en la información entregada o que no sean una inferencia razonable para su sector; cuando asumas algo, decláralo en analisisDatos.supuestos.",
+"- Diferencia explícitamente hechos comprobados (analisisDatos.hechos) de hipótesis o supuestos (analisisDatos.supuestos).",
+"- Si falta información importante para un diagnóstico sólido, indícalo en datosFaltantes con preguntas concretas y accionables (no lo dejes vacío a menos que la información entregada sea verdaderamente completa).",
+"- No inventes porcentajes de mejora ni cifras financieras precisas. Usa expresiones como 'potencial de mejora', 'estimación por validar' o 'impacto esperado' en los campos de beneficio/impacto.",
+"- No propongas un agente de IA solo por usar IA: cada agente debe resolver un problema identificado en 'problemas' u 'oportunidadesAutomatizacion'.",
+"- Prioriza primero organización de procesos y datos, y después automatización; esto debe reflejarse en el orden y contenido de hojaDeRuta (Fase 1 Diagnóstico, Fase 2 Organización, Fase 3 Automatización, Fase 4 Inteligencia artificial, Fase 5 Optimización — exactamente esas 5 fases, en ese orden, con 3 a 6 actividades concretas cada una).",
+"- Toda acción crítica de un agente de IA debe requerir aprobación humana explícita (campo aprobacionHumana).",
+"- 'comparacion' debe tener EXACTAMENTE estas 10 filas, en este orden, con aspecto literal: Procesos, Datos, Ventas, Atención, Operaciones, Automatización, IA, Seguimiento, Toma de decisiones, Productividad.",
+"- 'procesosDespues' debe tener el mismo número de elementos que 'procesosAntes', mismo 'nombre' y mismo orden, mostrando cómo cambia cada proceso.",
+"- Incluye entre 4 y 8 problemas, 2 a 4 procesosAntes (con 4 a 8 pasos cada uno, pasos cortos en imperativo o sustantivo, ej. 'Cliente envía solicitud por WhatsApp'), 5 a 10 oportunidadesAutomatizacion, 3 a 5 agentesIA, 4 a 8 indicadores, 3 a 6 riesgos, 6 a 10 preguntasFrecuentes, 4 a 6 recomendacionesFinales.",
+"- Marca en 'puntosAutomatizables' y 'puntosRepeticion' los pasos (texto idéntico a como aparecen en 'pasos') que correspondan, para que puedan resaltarse visualmente.",
+"- Tono profesional, claro, orientado a resultados, en español, apto para presentar a un gerente o CEO.",
+"- Responde SOLO con el JSON, sin explicaciones adicionales."
+  ].join("\n");
+}
+
+/* ---------------- generation ---------------- */
+async function generateDiagnostic(){
+  if(state.generating) return;
+  if(!caps.sample){
+    $("#genStatus").textContent = "La generación con IA no está disponible en este visor.";
+    return;
+  }
+  var company = $("#inCompany").value.trim();
+  var sector = $("#inSector").value.trim();
+  var country = $("#inCountry").value.trim();
+  var size = $("#inSize").value.trim();
+  var info = $("#inInfo").value.trim();
+
+  if(!company || !sector){
+    $("#genStatus").textContent = "Indica al menos el nombre de la empresa y el sector.";
+    return;
+  }
+
+  state.generating = true;
+  var btn = $("#btnGenerate");
+  btn.disabled = true;
+  $("#genStatus").innerHTML = 'Analizando la empresa y construyendo el diagnóstico <span class="loader"><span></span><span></span><span></span></span>';
+
+  try{
+    var prompt = buildPrompt(company, sector, country, size, info);
+    var data = await caps.sample.json(prompt, {modelTier:"complex", cache:false});
+    data = normalizeDiagnosis(data);
+
+    var docBody = {
+      company: company, sector: sector, country: country, size: size, info: info,
+      data: data, createdAt: new Date().toISOString(),
+      createdBy: (caps.user ? (await safeUserId()) : null)
+    };
+
+    var ref = null;
+    if(caps.db){
+      try{
+        ref = await caps.db.collection("diagnostics").add(docBody);
+      }catch(e){ /* db unavailable: keep in memory only */ }
+    }
+
+    state.currentId = ref ? ref.id : ("local-"+Date.now());
+    state.currentDoc = docBody;
+    state.chatMsgs = [];
+    state.chatTurns = [];
+
+    renderCompanyChip();
+    renderAll();
+    renderNav();
+    $("#genStatus").textContent = "Diagnóstico generado.";
+    setSection("resumen");
+  }catch(e){
+    $("#genStatus").textContent = errorCopy(e);
+  }finally{
+    state.generating = false;
+    btn.disabled = false;
+  }
+}
+
+async function safeUserId(){
+  try{ return await caps.user.id(); }catch(e){ return null; }
+}
+
+function errorCopy(e){
+  var code = e && e.code;
+  switch(code){
+    case "not_granted": return "Debes permitir que esta página use Claude para generar el diagnóstico (se te debió preguntar al hacer clic).";
+    case "rate_limited": return "Demasiadas solicitudes por ahora. Intenta de nuevo en un momento.";
+    case "prompt_too_large": return "La información pegada es demasiado extensa. Reduce el texto e intenta de nuevo.";
+    case "invalid_json": return "La IA no devolvió un JSON válido. Intenta generar de nuevo.";
+    case "cancelled": return "Generación cancelada.";
+    case "session_expired": return "Tu sesión expiró. Vuelve a intentarlo.";
+    default: return "No se pudo generar el diagnóstico (" + (code||"error") + "). Intenta de nuevo.";
+  }
+}
+
+function normalizeDiagnosis(d){
+  d = d && typeof d === "object" ? d : {};
+  d.resumenEjecutivo = d.resumenEjecutivo || "";
+  d.situacionActual = d.situacionActual || "";
+  d.datosFaltantes = arr(d.datosFaltantes);
+  d.problemas = arr(d.problemas);
+  d.procesosAntes = arr(d.procesosAntes);
+  d.analisisDatos = d.analisisDatos || {};
+  ["datosUtilizados","ubicaciones","duplicados","incompletos","desconectados","indicadoresRecomendados","hechos","supuestos"].forEach(function(k){
+    d.analisisDatos[k] = arr(d.analisisDatos[k]);
+  });
+  d.oportunidadesAutomatizacion = arr(d.oportunidadesAutomatizacion);
+  d.agentesIA = arr(d.agentesIA);
+  d.procesosDespues = arr(d.procesosDespues);
+  var comp = arr(d.comparacion);
+  d.comparacion = COMPARISON_ASPECTS.map(function(asp){
+    var found = comp.filter(function(c){ return c && c.aspecto === asp; })[0];
+    return found || {aspecto:asp, antes:"", despues:""};
+  });
+  var hr = arr(d.hojaDeRuta);
+  d.hojaDeRuta = FASES.map(function(f, i){
+    var found = hr[i] || hr.filter(function(h){return h && h.fase===f.fase;})[0];
+    return {fase:f.fase, nombre:(found&&found.nombre)||f.nombre, actividades: arr(found&&found.actividades)};
+  });
+  d.indicadores = arr(d.indicadores);
+  d.riesgos = arr(d.riesgos);
+  d.preguntasFrecuentes = arr(d.preguntasFrecuentes);
+  d.recomendacionesFinales = arr(d.recomendacionesFinales);
+  return d;
+}
+
+/* ---------------- render: all sections ---------------- */
+function renderAll(){
+  var d = state.currentDoc && state.currentDoc.data;
+  if(!d) return;
+  renderMissing(d);
+  renderResumen(d);
+  renderAntes(d);
+  renderDatos(d);
+  renderAutomatizacion(d);
+  renderAgentes(d);
+  renderDespues(d);
+  renderRoadmap(d);
+  renderIndicadores(d);
+  renderSuggestedChips(d);
+  renderChatLog();
+  renderTopbar();
+}
+
+function renderMissing(d){
+  var has = d.datosFaltantes && d.datosFaltantes.length;
+  $("#missingCard").hidden = !has;
+  $("#faltaCard").hidden = !has;
+  var ul1 = $("#missingList"); ul1.innerHTML = "";
+  var ul2 = $("#faltaList2"); ul2.innerHTML = "";
+  (d.datosFaltantes||[]).forEach(function(q){
+    ul1.appendChild(el("li","",esc(q)));
+    ul2.appendChild(el("li","",esc(q)));
+  });
+}
+
+function renderResumen(d){
+  $("#resumenTxt").textContent = d.resumenEjecutivo || "—";
+  $("#situacionTxt").textContent = d.situacionActual || "—";
+  var tiles = [
+    {n:d.problemas.length, l:"Problemas detectados", cls:"a"},
+    {n:d.oportunidadesAutomatizacion.length, l:"Oportunidades de automatización", cls:"d"},
+    {n:d.agentesIA.length, l:"Agentes de IA propuestos", cls:"i"},
+    {n:d.procesosAntes.length, l:"Procesos mapeados", cls:""},
+    {n:d.riesgos.length, l:"Riesgos identificados", cls:"a"},
+    {n:d.indicadores.length, l:"Indicadores de seguimiento", cls:"d"}
+  ];
+  var box = $("#statTiles"); box.innerHTML = "";
+  tiles.forEach(function(t){
+    var s = el("div","stat "+t.cls);
+    s.innerHTML = '<div class="n">'+t.n+'</div><div class="l">'+esc(t.l)+'</div>';
+    box.appendChild(s);
+  });
+}
+
+function renderAntes(d){
+  var box = $("#problemsList"); box.innerHTML = "";
+  d.problemas.forEach(function(p){
+    var c = el("div","problem");
+    c.innerHTML = '<h4>'+esc(p.titulo)+'</h4><p style="font-size:12.5px;color:var(--text-muted)">'+esc(p.descripcion)+'</p>'+
+      '<dl><dt>Por qué ocurre</dt><dd>'+esc(p.porQueOcurre)+'</dd>'+
+      '<dt>Impacto</dt><dd>'+esc(p.impacto)+'</dd>'+
+      '<dt>Evidencia</dt><dd>'+esc(p.evidencia)+'</dd></dl>';
+    box.appendChild(c);
+  });
+
+  var list = $("#procesosAntesList"); list.innerHTML = "";
+  d.procesosAntes.forEach(function(proc){
+    var card = el("div","card");
+    var head = '<h3>'+esc(proc.nombre)+' <span class="tag">Proceso actual</span></h3>'+
+      '<div class="proceso-meta">'+
+      (proc.entrada?'<span class="badge">Entrada: '+esc(proc.entrada)+'</span>':'')+
+      (proc.salida?'<span class="badge">Salida: '+esc(proc.salida)+'</span>':'')+
+      arr(proc.personas).map(function(p){return '<span class="badge">'+esc(p)+'</span>';}).join("")+
+      arr(proc.sistemas).map(function(s){return '<span class="badge mono">'+esc(s)+'</span>';}).join("")+
+      '</div>';
+    var flowHtml = buildFlow(proc.pasos, proc.puntosRepeticion.concat(proc.puntosAutomatizables), proc.puntosAutomatizables, "antes");
+    var problemsHtml = proc.problemas.length ? ('<div style="margin-top:14px"><b style="font-size:11px;color:var(--antes);text-transform:uppercase;letter-spacing:.04em">Problemas de este proceso</b><ul class="list-tight" style="margin-top:6px">'+proc.problemas.map(function(pp){return '<li>'+esc(pp)+'</li>';}).join("")+'</ul></div>') : "";
+    card.innerHTML = head + '<div class="flow-col antes" style="margin-top:4px">' + flowHtml + '</div>' + problemsHtml;
+    list.appendChild(card);
+  });
+}
+
+function buildFlow(pasos, highlightRep, highlightAuto, variant){
+  pasos = arr(pasos);
+  var out = "";
+  pasos.forEach(function(step, i){
+    var isAuto = highlightAuto && highlightAuto.indexOf(step) >= 0;
+    var cls = "flow-step" + (isAuto ? " auto-step" : "");
+    out += '<div class="'+cls+'"><span class="step-tag">PASO '+(i+1)+(isAuto?" · AUTOMATIZABLE":"")+'</span>'+esc(step)+'</div>';
+    if(i < pasos.length-1) out += '<div class="flow-arrow">↓</div>';
+  });
+  return '<div class="flow">'+out+'</div>';
+}
+
+function renderDatos(d){
+  var a = d.analisisDatos;
+  function fill(id, arr_){ var ul=$(id); ul.innerHTML=""; (arr_||[]).forEach(function(x){ ul.appendChild(el("li","",esc(x))); }); if(!(arr_||[]).length) ul.appendChild(el("li","",'<span style="color:var(--text-muted)">Sin información suficiente.</span>')); }
+  fill("#datUtilizados", a.datosUtilizados);
+  fill("#datUbicaciones", a.ubicaciones);
+  fill("#datDuplicados", a.duplicados);
+  fill("#datIncompletos", a.incompletos);
+  fill("#datDesconectados", a.desconectados);
+  fill("#datIndicadores", a.indicadoresRecomendados);
+  fill("#datHechos", a.hechos);
+  fill("#datSupuestos", a.supuestos);
+}
+
+function renderAutomatizacion(d){
+  var tbody = $("#autoTable tbody"); tbody.innerHTML = "";
+  d.oportunidadesAutomatizacion.forEach(function(o){
+    var tr = el("tr","");
+    tr.innerHTML = "<td>"+esc(o.proceso)+"</td><td>"+esc(o.problema)+"</td><td>"+esc(o.tareaRepetitiva)+"</td><td>"+esc(o.automatizacionPosible)+"</td><td>"+esc(o.beneficio)+"</td><td><span class='prio "+prioClass(o.prioridad)+"'>"+esc(o.prioridad||"—")+"</span></td>";
+    tbody.appendChild(tr);
+  });
+}
+
+function renderAgentes(d){
+  var grid = $("#agentsGrid"); grid.innerHTML = "";
+  d.agentesIA.forEach(function(ag){
+    var c = el("div","agent");
+    c.innerHTML = '<h4><span class="dot"></span>'+esc(ag.nombre)+'</h4>'+
+      '<p class="objetivo">'+esc(ag.objetivo)+'</p>'+
+      '<div class="kv"><b>Usuario</b>'+esc(ag.usuario)+'</div>'+
+      '<div class="kv"><b>Tareas</b><ul>'+arr(ag.tareas).map(function(t){return '<li>'+esc(t)+'</li>';}).join("")+'</ul></div>'+
+      '<div class="kv"><b>Preguntas que responde</b><ul>'+arr(ag.preguntasQueResponde).map(function(t){return '<li>'+esc(t)+'</li>';}).join("")+'</ul></div>'+
+      '<div class="kv"><b>Sistemas a conectar</b>'+arr(ag.sistemasConectar).map(esc).join(", ")+'</div>'+
+      '<div class="approval"><b>Requiere aprobación humana:</b> '+esc(ag.aprobacionHumana)+'</div>'+
+      '<div class="kv" style="margin-top:2px"><b>Beneficio esperado</b>'+esc(ag.beneficioEsperado)+'</div>';
+    grid.appendChild(c);
+  });
+}
+
+function renderDespues(d){
+  var tbody = $("#compTable tbody"); tbody.innerHTML = "";
+  d.comparacion.forEach(function(c){
+    var tr = el("tr","");
+    tr.innerHTML = "<td><b>"+esc(c.aspecto)+"</b></td><td>"+esc(c.antes)+"</td><td>"+esc(c.despues)+"</td>";
+    tbody.appendChild(tr);
+  });
+
+  var list = $("#procesosDespuesList"); list.innerHTML = "";
+  d.procesosAntes.forEach(function(procA, i){
+    var procD = d.procesosDespues[i] || d.procesosDespues.filter(function(p){return p.nombre===procA.nombre;})[0] || {nombre:procA.nombre, pasos:[], queCambio:""};
+    var card = el("div","card");
+    var flowA = buildFlow(procA.pasos, [], procA.puntosAutomatizables, "antes");
+    var flowD = buildFlow(procD.pasos, [], [], "despues");
+    card.innerHTML = '<h3>'+esc(procA.nombre)+' <span class="tag">Antes / Después</span></h3>'+
+      '<div class="flow-wrap">'+
+      '<div class="flow-col antes"><h4>↓ Antes</h4>'+flowA+'</div>'+
+      '<div class="flow-col despues"><h4>↓ Después</h4>'+flowD+'</div>'+
+      '</div>'+
+      (procD.queCambio ? '<div class="que-cambio"><b>Qué cambió: </b>'+esc(procD.queCambio)+'</div>' : "");
+    list.appendChild(card);
+  });
+}
+
+function renderRoadmap(d){
+  var box = $("#roadmapList"); box.innerHTML = "";
+  d.hojaDeRuta.forEach(function(f, i){
+    var row = el("div","phase");
+    row.innerHTML = '<div class="dotcol"><div class="circle">'+(i+1)+'</div><div class="line"></div></div>'+
+      '<div class="phase-body"><h4>'+esc(f.fase)+' — '+esc(f.nombre)+'</h4><ul>'+arr(f.actividades).map(function(a){return '<li>'+esc(a)+'</li>';}).join("")+'</ul></div>';
+    box.appendChild(row);
+  });
+}
+
+function renderIndicadores(d){
+  var grid = $("#kpiGrid"); grid.innerHTML = "";
+  d.indicadores.forEach(function(k){
+    var c = el("div","kpi");
+    c.innerHTML = '<h5>'+esc(k.nombre)+'</h5><p>'+esc(k.descripcion)+'</p><p style="margin-top:6px;font-family:var(--font-mono);font-size:10.5px;color:var(--accent)">'+esc(k.comoMedir)+'</p>';
+    grid.appendChild(c);
+  });
+  var risks = $("#riskList"); risks.innerHTML = "";
+  d.riesgos.forEach(function(r){
+    var row = el("div","risk-row");
+    row.innerHTML = '<div class="r"><small>Riesgo</small>'+esc(r.riesgo)+'</div><div class="m"><small>Mitigación</small>'+esc(r.mitigacion)+'</div>';
+    risks.appendChild(row);
+  });
+  var reco = $("#recoList"); reco.innerHTML = "";
+  d.recomendacionesFinales.forEach(function(r){ reco.appendChild(el("li","",esc(r))); });
+}
+
+/* ---------------- chat ---------------- */
+function renderSuggestedChips(d){
+  var box = $("#suggestedChips"); box.innerHTML = "";
+  var qs = (d.preguntasFrecuentes && d.preguntasFrecuentes.length) ? d.preguntasFrecuentes.slice(0,8) : SUGGESTED_QS;
+  qs.forEach(function(q){
+    var c = el("button","chip", esc(q));
+    c.addEventListener("click", function(){ $("#chatInput").value = q; sendChat(); });
+    box.appendChild(c);
+  });
+}
+
+function renderChatLog(){
+  var log = $("#chatLog"); log.innerHTML = "";
+  if(!state.chatMsgs.length){
+    log.appendChild(el("div","msg assistant","Hazme una pregunta sobre el diagnóstico de "+esc((state.currentDoc&&state.currentDoc.company)||"la empresa")+". Puedo responder con base en los problemas, procesos, automatización, agentes de IA y hoja de ruta generados."));
+    return;
+  }
+  state.chatMsgs.forEach(function(m){
+    log.appendChild(el("div","msg "+(m.role==="user"?"user":"assistant"), esc(m.content)));
+  });
+  log.scrollTop = log.scrollHeight;
+}
+
+function diagSummaryForChat(d){
+  // Trim to keep prompt reasonably small while keeping all substance.
+  var copy = JSON.parse(JSON.stringify(d));
+  return JSON.stringify(copy);
+}
+
+async function sendChat(){
+  if(state.chatBusy) return;
+  var input = $("#chatInput");
+  var text = input.value.trim();
+  if(!text || !state.currentDoc) return;
+  if(!caps.sample){
+    state.chatMsgs.push({role:"assistant", content:"La función de preguntas con IA no está disponible en este visor.", ts:Date.now()});
+    renderChatLog();
+    return;
+  }
+  state.chatBusy = true;
+  input.value = "";
+  state.chatMsgs.push({role:"user", content:text, ts:Date.now()});
+  renderChatLog();
+  var log = $("#chatLog");
+  var thinking = el("div","msg thinking","Pensando…");
+  log.appendChild(thinking); log.scrollTop = log.scrollHeight;
+
+  var d = state.currentDoc.data;
+  var instructions = "Eres un consultor que responde preguntas sobre un diagnóstico empresarial ya generado para "+state.currentDoc.company+" ("+state.currentDoc.sector+", "+state.currentDoc.country+"). "+
+    "Responde SOLO con base en el siguiente diagnóstico en JSON; no inventes cifras ni datos que no estén en él. "+
+    "Cuando sea posible, estructura la respuesta como: dato → análisis → conclusión → recomendación → acción sugerida, en 4 a 8 líneas, tono profesional y directo, en español. "+
+    "Si la pregunta no se puede responder con esta información, dilo explícitamente y sugiere qué información haría falta.\n\nDIAGNÓSTICO:\n" + diagSummaryForChat(d);
+
+  var turns = [{role:"user", content: instructions}];
+  // Keep conversation context (previous turns), trimmed to last 12 exchanges.
+  var history = state.chatTurns.slice(-16);
+  turns = turns.concat(history);
+  turns.push({role:"user", content:text});
+  // Collapse consecutive same-role (instructions + possibly empty history) is fine per spec.
+
+  try{
+    var res = await caps.sample(turns, {modelTier:"default", cache:false});
+    log.removeChild(thinking);
+    state.chatMsgs.push({role:"assistant", content:res.text, ts:Date.now()});
+    state.chatTurns.push({role:"user", content:text});
+    state.chatTurns.push({role:"assistant", content:res.text});
+    renderChatLog();
+    persistChat(text, res.text);
+  }catch(e){
+    log.removeChild(thinking);
+    state.chatMsgs.push({role:"assistant", content: errorCopy(e), ts:Date.now()});
+    renderChatLog();
+  }finally{
+    state.chatBusy = false;
+  }
+}
+
+async function persistChat(userText, assistantText){
+  if(!caps.db || !state.currentId || state.currentId.indexOf("local-")===0) return;
+  try{
+    var col = caps.db.collection("diagnostics/"+state.currentId+"/chat");
+    await col.add({role:"user", content:userText, ts: Date.now()});
+    await col.add({role:"assistant", content:assistantText, ts: Date.now()});
+  }catch(e){}
+}
+
+/* ---------------- export ---------------- */
+async function exportReport(){
+  if(!state.currentDoc || !state.currentDoc.data) return;
+  var d = state.currentDoc.data;
+  var c = state.currentDoc;
+  var md = [];
+  md.push("# Diagnóstico de transformación empresarial — " + c.company);
+  md.push("");
+  md.push("**Sector:** " + c.sector + "  ");
+  md.push("**País/mercado:** " + c.country + "  ");
+  md.push("**Fecha:** " + fmtDate(c.createdAt));
+  md.push("");
+  md.push("## 1. Resumen ejecutivo");
+  md.push(d.resumenEjecutivo || "—");
+  md.push("");
+  md.push("## 2. Situación actual");
+  md.push(d.situacionActual || "—");
+  md.push("");
+  if(d.datosFaltantes.length){
+    md.push("## Información faltante / preguntas a resolver");
+    d.datosFaltantes.forEach(function(q){ md.push("- " + q); });
+    md.push("");
+  }
+  md.push("## 3. Problemas encontrados");
+  d.problemas.forEach(function(p){
+    md.push("### " + p.titulo);
+    md.push(p.descripcion);
+    md.push("- Por qué ocurre: " + p.porQueOcurre);
+    md.push("- Impacto: " + p.impacto);
+    md.push("- Evidencia: " + p.evidencia);
+    md.push("");
+  });
+  md.push("## 4. Mapa de procesos — ANTES");
+  d.procesosAntes.forEach(function(proc){
+    md.push("### " + proc.nombre);
+    md.push("Entrada: " + proc.entrada + " · Salida: " + proc.salida);
+    (proc.pasos||[]).forEach(function(s,i){ md.push((i+1)+". " + s); });
+    if(proc.problemas && proc.problemas.length){ md.push("Problemas: " + proc.problemas.join("; ")); }
+    md.push("");
+  });
+  md.push("## 5. Análisis de datos");
+  var a = d.analisisDatos;
+  md.push("**Datos utilizados:** " + a.datosUtilizados.join("; "));
+  md.push("**Ubicaciones:** " + a.ubicaciones.join("; "));
+  md.push("**Duplicados:** " + a.duplicados.join("; "));
+  md.push("**Incompletos:** " + a.incompletos.join("; "));
+  md.push("**Desconectados:** " + a.desconectados.join("; "));
+  md.push("**Hechos comprobados:** " + a.hechos.join("; "));
+  md.push("**Supuestos:** " + a.supuestos.join("; "));
+  md.push("");
+  md.push("## 6. Oportunidades de automatización");
+  md.push("| Proceso | Problema | Tarea repetitiva | Automatización posible | Beneficio | Prioridad |");
+  md.push("|---|---|---|---|---|---|");
+  d.oportunidadesAutomatizacion.forEach(function(o){
+    md.push("| " + o.proceso + " | " + o.problema + " | " + o.tareaRepetitiva + " | " + o.automatizacionPosible + " | " + o.beneficio + " | " + o.prioridad + " |");
+  });
+  md.push("");
+  md.push("## 7. Agentes de IA recomendados");
+  d.agentesIA.forEach(function(ag){
+    md.push("### " + ag.nombre);
+    md.push(ag.objetivo);
+    md.push("- Usuario: " + ag.usuario);
+    md.push("- Tareas: " + (ag.tareas||[]).join("; "));
+    md.push("- Sistemas a conectar: " + (ag.sistemasConectar||[]).join("; "));
+    md.push("- Requiere aprobación humana: " + ag.aprobacionHumana);
+    md.push("- Beneficio esperado: " + ag.beneficioEsperado);
+    md.push("");
+  });
+  md.push("## 8. Mapa de procesos — DESPUÉS");
+  d.procesosDespues.forEach(function(proc){
+    md.push("### " + proc.nombre);
+    (proc.pasos||[]).forEach(function(s,i){ md.push((i+1)+". " + s); });
+    md.push("Qué cambió: " + proc.queCambio);
+    md.push("");
+  });
+  md.push("## 9. Comparación ANTES vs. DESPUÉS");
+  md.push("| Aspecto | Antes | Después |");
+  md.push("|---|---|---|");
+  d.comparacion.forEach(function(c2){ md.push("| " + c2.aspecto + " | " + c2.antes + " | " + c2.despues + " |"); });
+  md.push("");
+  md.push("## 10. Hoja de ruta de implementación");
+  d.hojaDeRuta.forEach(function(f){
+    md.push("### " + f.fase + " — " + f.nombre);
+    (f.actividades||[]).forEach(function(act){ md.push("- " + act); });
+    md.push("");
+  });
+  md.push("## 11. Indicadores para medir resultados");
+  d.indicadores.forEach(function(k){ md.push("- **" + k.nombre + "**: " + k.descripcion + " (" + k.comoMedir + ")"); });
+  md.push("");
+  md.push("## 12. Riesgos y controles");
+  d.riesgos.forEach(function(r){ md.push("- Riesgo: " + r.riesgo + " → Mitigación: " + r.mitigacion); });
+  md.push("");
+  md.push("## 13. Preguntas que la IA puede responder");
+  d.preguntasFrecuentes.forEach(function(q){ md.push("- " + q); });
+  md.push("");
+  md.push("## 14. Recomendaciones finales");
+  d.recomendacionesFinales.forEach(function(r){ md.push("- " + r); });
+  md.push("");
+
+  var filename = "diagnostico-" + c.company.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"") + ".md";
+  if(!caps.downloads){
+    $("#genStatus").textContent = "La descarga de archivos no está disponible en este visor.";
+    return;
+  }
+  try{
+    await caps.downloads.save({filename: filename, data: md.join("\n")});
+  }catch(e){ /* declined or unavailable: no-op */ }
+}
+
+/* ---------------- demo prefill ---------------- */
+function prefillDemo(){
+  $("#inCompany").value = "Andina Soluciones Logísticas S.A.S.";
+  $("#inSector").value = "Logística y distribución de última milla";
+  $("#inCountry").value = "Colombia";
+  $("#inSize").value = "52 empleados, 2 bodegas (Bogotá y Medellín), flota propia y tercerizada";
+  $("#inInfo").value = "Los pedidos de clientes corporativos llegan por WhatsApp, correo y una hoja de Excel compartida que actualiza manualmente el equipo comercial. No hay un CRM: el seguimiento de clientes se hace en hojas de cálculo personales de cada vendedor, y es común perder el hilo de una cotización cuando el vendedor está de vacaciones. El equipo de operaciones recibe los pedidos ya aprobados y los registra de nuevo en un sistema de inventario distinto, por lo que la misma información se escribe dos veces y a veces no coincide. La asignación de rutas a los conductores se hace cada mañana con un tablero físico y llamadas telefónicas; no hay visibilidad en tiempo real de dónde está cada entrega, así que cuando un cliente pregunta por su pedido, el asesor debe llamar al conductor para saber dónde va. Las devoluciones y novedades de entrega (dirección errada, cliente ausente) se anotan en papel y se transcriben al día siguiente, lo que genera reportes de servicio con uno o dos días de atraso. Facturación depende de que operaciones le avise por chat que la entrega quedó confirmada, lo que ha generado facturas duplicadas y otras que se olvidan. El gerente general pidió reducir quejas de clientes por demoras y tener visibilidad real del estado de cada pedido sin tener que llamar a cada conductor.";
+}
+
+/* ---------------- boot ---------------- */
+function boot(){
+  renderNav();
+  renderTopbar();
+  prefillDemo();
+  $("#btnGenerate").addEventListener("click", generateDiagnostic);
+  $("#btnNew").addEventListener("click", newDiagnostic);
+  $("#btnSend").addEventListener("click", sendChat);
+  $("#chatInput").addEventListener("keydown", function(e){
+    if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendChat(); }
+  });
+  initCapabilities();
+}
+
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", boot);
+}else{
+  boot();
+}
+})();
+</script>
+
+</body></html>
