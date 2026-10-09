@@ -1209,8 +1209,7 @@ function prefillDemo(){
 
 /* ---------------- boot ---------------- */
 function boot(){
-  renderNav();
-  renderTopbar();
+  setSection("intake");
   prefillDemo();
   $("#btnGenerate").addEventListener("click", generateDiagnostic);
   $("#btnNew").addEventListener("click", newDiagnostic);
